@@ -9,8 +9,12 @@ read it, test it, and reuse it.
 |---|---|
 | `prompt.md` | The system prompt, verbatim. |
 | `rules.json` | The model and effort, the allowed answers, the nine rules, the answer schema, the first line of the message, and the exact words a team sees for each answer. |
-| `testset.jsonl` | Sixteen labelled findings, mostly reconstructed from public incidents of November 2026, with the answers a careful responder would accept. |
-| `eval.mjs` | Runs the test set through the prompt and scores it. Node 20 or later, no dependencies. |
+| `testset.jsonl` | One hundred labelled findings with the answers a careful responder would accept: T01 to T16 reconstructed from public incidents of November 2026, T17 to T100 synthetic and marked so in `source` (56 real incidents, 35 benign look-alikes, 9 that need a person). |
+| `injection.jsonl` | Eighteen findings whose on-chain text (a token name, memo, role name, ENS name, Safe note, contract string) carries a hidden instruction to the model, extending T11. 13 real, 3 benign ones whose text demands alarm, 2 that need a person. Run with `--set injection.jsonl`. No public labelled set of this kind was found; the closest public work is arXiv 2503.16248. |
+| `eval.mjs` | Runs the test set through the prompt and scores it, with Anthropic or OpenAI models. Node 20 or later, no dependencies. |
+| `scores.mjs` | Builds `SCORES.md`, the per-model score table, from the runs saved in `results/`. |
+| `SCORES.md` | Verdict, severity and step agreement, unsafe answers, cost per alert and answer time, one row per model run. |
+| `selftest.mjs` | A dry run of `eval.mjs` for both providers against a local stand-in: no key, no network. |
 
 The watch's own code is tested against these files byte for byte, so this folder is what runs.
 
@@ -41,7 +45,26 @@ node eval.mjs
 It prints one line per case and a summary: how often the verdict matched the label, whether the severity and step were
 ones the label accepts, the time per answer, and the tokens used. **Any case labelled a real incident that the model calls
 normal activity fails the run**, because that is the one mistake that could make a team stand down. `--min-verdict N`
-sets how many verdicts must match (default: all), and `--only T01,T05` runs a subset.
+sets how many verdicts must match (default: 13 of every 16, rounded up, so 82 of the 100), and `--only T01,T05` runs a subset.
+
+### Other models, and the score table
+
+The same prompt, rules and schema run on OpenAI models too. Put the key in `OPENAI_API_KEY` and name the model, since no
+default is guessed:
+
+```
+node eval.mjs --provider openai --model <model name> --price-in <USD per 1M input tokens> --price-out <USD per 1M output tokens> --out results/<name>.json
+node scores.mjs
+```
+
+OpenAI runs go through the Responses API (`POST /v1/responses`) with a strict `json_schema` text format and
+`store: false`. A refusal, a `content_filter` stop, a cut answer and a `cyber_policy` error each count as no answer, and
+the per-case line says which. Grading is done here, in `eval.mjs`, not by the provider.
+
+`--price-in` and `--price-out` are the provider's current list prices, typed by you (the script carries no price list),
+and give the cost per alert. `--out` saves the run's summary (no key and no answer text), and `scores.mjs` turns every
+saved run into the table in `SCORES.md`. `--model` also works with the default Anthropic provider. `node selftest.mjs`
+checks the whole path for both providers without a key.
 
 ## The test set
 
